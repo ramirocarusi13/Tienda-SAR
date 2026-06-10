@@ -22,6 +22,10 @@ class TiendaController extends Controller {
         return $this->setResponse($data->toArray());
     }
 
+    public function getPedidosEntrantes() {
+        return $this->setResponse(TiendaService::getPedidosEntrantes());
+    }
+
     public function finalizarPedido(Request $request) {
 
         $tiendaService = new TiendaService();

@@ -49,7 +49,7 @@ class ScrapService {
     }
 
 
-    public function registraScrapPieza(int $userId, int $materialId, string $motivo, int $lineaId, string $tipoLinea, string $sector, int $piezaId, int|null $fallaId) {
+    public function registraScrapPieza(int $userId, int $materialId, string $motivo, int|null $lineaId, string $tipoLinea, string $sector, int $piezaId, int|null $fallaId) {
 
         $pieza = Piezas::where('id', $piezaId)->first();
         $material = MaterialesPiezas::where('id', $materialId)->first();

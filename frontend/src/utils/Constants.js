@@ -111,6 +111,7 @@ export const routesNames = {
     TIENDA: {
         IMPRESION_ETQ: '/tienda/etiquetas',
         PEDIDO_REPOSICION: '/tienda/pedido',
+        PEDIDOS_ENTRANTES: '/tienda/pedidos-entrantes',
         EGRESO: '/tienda/egreso'
     }
 }

@@ -9,6 +9,7 @@ use App\Models\TiendaPedido;
 use App\Models\TiendaPedidoItems;
 use App\Models\VTPiezas;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class TiendaService {
@@ -67,9 +68,107 @@ class TiendaService {
     }
 
     static function getPedidosPendientes() {
-        $pedidos = TiendaPedido::with('linea', 'falla', 'user', 'items.pieza.parte.modelo', 'items.pieza.material_pieza')->where('pendiente', 1)->get();
+        $pedidos = TiendaPedido::with('linea', 'falla', 'user', 'items.pieza.parte.modelo', 'items.pieza.material_pieza')
+            ->where('pendiente', 1)
+            ->orderByDesc('created_at')
+            ->get();
 
         return $pedidos;
+    }
+
+    static function getPedidosEntrantes(): array {
+        $pedidos = DB::table('tienda_pedidos')
+            ->leftJoin('lineas', 'lineas.id', '=', 'tienda_pedidos.linea_id')
+            ->leftJoin('codigo_fallas', 'codigo_fallas.id', '=', 'tienda_pedidos.falla_id')
+            ->leftJoin('users', 'users.id', '=', 'tienda_pedidos.user_id')
+            ->where('tienda_pedidos.pendiente', 1)
+            ->orderByDesc('tienda_pedidos.created_at')
+            ->limit(50)
+            ->get([
+                'tienda_pedidos.id',
+                'tienda_pedidos.user_id',
+                'tienda_pedidos.falla_id',
+                'tienda_pedidos.kanban_id',
+                'tienda_pedidos.linea_id',
+                'tienda_pedidos.created_at',
+                'lineas.codigo as linea_codigo',
+                'lineas.nombre as linea_nombre',
+                'codigo_fallas.nombre as falla_nombre',
+                'codigo_fallas.codigo as falla_codigo',
+                'users.email as user_email',
+            ]);
+
+        $pedidoIds = $pedidos->pluck('id')->values();
+
+        if ($pedidoIds->isEmpty()) {
+            return [];
+        }
+
+        $items = DB::table('tienda_pedido_items')
+            ->leftJoin('piezas', 'piezas.id', '=', 'tienda_pedido_items.pieza_id')
+            ->leftJoin('partes', 'partes.id', '=', 'piezas.parte_id')
+            ->leftJoin('modelos', 'modelos.id', '=', 'partes.modelo_id')
+            ->leftJoin('materiales_piezas', 'materiales_piezas.id', '=', 'piezas.material_pieza_id')
+            ->whereIn('tienda_pedido_items.pedido_id', $pedidoIds)
+            ->orderBy('tienda_pedido_items.id')
+            ->get([
+                'tienda_pedido_items.id',
+                'tienda_pedido_items.pedido_id',
+                'tienda_pedido_items.pieza_id',
+                'tienda_pedido_items.cantidad',
+                'tienda_pedido_items.qr',
+                'piezas.codigo as pieza_codigo',
+                'materiales_piezas.nombre as material_nombre',
+                'modelos.nombre as modelo_nombre',
+            ])
+            ->groupBy('pedido_id');
+
+        return $pedidos->map(function ($pedido) use ($items) {
+            $pedidoItems = ($items[$pedido->id] ?? collect())->map(function ($item) {
+                return [
+                    'id'       => $item->id,
+                    'pedido_id' => $item->pedido_id,
+                    'pieza_id'  => $item->pieza_id,
+                    'cantidad'  => $item->cantidad,
+                    'qr'        => $item->qr,
+                    'pieza'     => [
+                        'id'             => $item->pieza_id,
+                        'codigo'         => $item->pieza_codigo,
+                        'material_pieza' => [
+                            'nombre' => $item->material_nombre,
+                        ],
+                        'parte'          => [
+                            'modelo' => [
+                                [
+                                    'nombre' => $item->modelo_nombre,
+                                ],
+                            ],
+                        ],
+                    ],
+                ];
+            })->values()->toArray();
+
+            return [
+                'id'         => $pedido->id,
+                'user_id'    => $pedido->user_id,
+                'falla_id'   => $pedido->falla_id,
+                'kanban_id'  => $pedido->kanban_id,
+                'linea_id'   => $pedido->linea_id,
+                'created_at' => $pedido->created_at,
+                'linea'      => [
+                    'codigo' => $pedido->linea_codigo,
+                    'nombre' => $pedido->linea_nombre,
+                ],
+                'falla'      => [
+                    'codigo' => $pedido->falla_codigo,
+                    'nombre' => $pedido->falla_nombre,
+                ],
+                'user'       => [
+                    'email' => $pedido->user_email,
+                ],
+                'items'      => $pedidoItems,
+            ];
+        })->toArray();
     }
 
     public function finalizarPedido(Request $request) {

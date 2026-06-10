@@ -10,6 +10,16 @@ export const getPedidosPendientes = async () => {
     }
 }
 
+export const getPedidosEntrantes = async () => {
+
+    try {
+        const data = await HttpGet("tienda/pedidos/entrantes")
+        return data
+    } catch (error) {
+        return error
+    }
+}
+
 export const getEtiquetas = async () => {
     try {
         const data = await HttpGet("tienda/etiquetas")

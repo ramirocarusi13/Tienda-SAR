@@ -16,6 +16,7 @@ Route::group(['middleware' => ['cors', 'json.response']], function () {
     Route::get('linea/{linea}/modelos', [\App\Http\Controllers\LineasController::class, 'getModelosLinea']);
     Route::get('tienda/info/{codigoKanban}', [\App\Http\Controllers\TiendaController::class, 'getInfoModelByKanban']);
     Route::post('tienda/pedido', [\App\Http\Controllers\TiendaController::class, 'setPedido']);
+    Route::get('tienda/pedidos/entrantes', [\App\Http\Controllers\TiendaController::class, 'getPedidosEntrantes']);
 
     // PDF de kanban de reposicion usado desde la grilla de stock.
     Route::get('pieza/getFileReposicion/{piezaId}/{modelo}/{file}/{capas}', [\App\Http\Controllers\StockPiezasController::class, 'getFileKanbanReposicion']);
@@ -47,4 +48,5 @@ Route::group(['middleware' => ['auth:api', 'cors', 'json.response']], function (
     Route::post('tienda/pedido/finalizar', [\App\Http\Controllers\TiendaController::class, 'finalizarPedido']);
     Route::get('tienda/pedido/{kanbanCode}', [\App\Http\Controllers\TiendaController::class, 'getPedidoByKanban']);
     Route::post('stock/piezasTienda', [\App\Http\Controllers\StockPiezasController::class, 'stockTiendaTodasPiezas']);
+    Route::post('retrabajo', [\App\Http\Controllers\FallasInformadasController::class, 'cambiarEstadoRetrabajo']);
 });

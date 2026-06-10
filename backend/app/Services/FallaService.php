@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Http\EstadoFalla;
+use App\Http\EstadosQr;
 use App\Http\StockPiezasLib;
 use App\Models\CodigoFalla;
 use App\Models\EpEtiqueta;
@@ -425,6 +426,8 @@ class FallaService {
 
     public function cambiaEstadoRetrabajo(int $id, int $userId, string $estado) {
         try {
+            DB::beginTransaction();
+
             // FallasInformadas::where('id', $id)->update([
             //     'estado'            => $estado,
             //     'user_retrabajo_id' => $userId,
@@ -434,6 +437,8 @@ class FallaService {
             $falla = FallasInformadas::where('id', $id)->first();
 
             if ($falla) {
+                $estadoAnterior = $falla->estado;
+
                 FallasInformadas::where('id', $id)->update([
                     'estado'            => $estado,
                     'user_retrabajo_id' => $userId,
@@ -445,14 +450,120 @@ class FallaService {
                     'hora_validacion_carab' => null,
                     'kanban_carab'          => null,
                 ]);
+
+                if ($estado === EstadoFalla::SCRAP && $estadoAnterior !== EstadoFalla::SCRAP) {
+                    $this->generarPedidoTiendaPorScrapRetrabajo($falla, $userId);
+                }
             }
 
+            DB::commit();
             return null;
         } catch (\Throwable $th) {
+            DB::rollBack();
             //throw $th;
             Log::error("FallasInformadasController::cambiarEstadoRetrabajo : " . $th->getMessage());
             return 'Ocurrió un error al cambiar el estado del retrabajo';
         }
+    }
+
+    private function generarPedidoTiendaPorScrapRetrabajo(FallasInformadas $falla, int $userId): void {
+        if (Scrap::where('defecto_id', $falla->id)->exists()) {
+            return;
+        }
+
+        if (empty($falla->qr)) {
+            Log::warning("FallaService::generarPedidoTiendaPorScrapRetrabajo - falla sin QR {$falla->id}");
+            return;
+        }
+
+        $etiqueta = EpEtiqueta::where('qr', $falla->qr)->first();
+
+        if (!$etiqueta) {
+            Log::warning("FallaService::generarPedidoTiendaPorScrapRetrabajo - etiqueta no encontrada para QR {$falla->qr}");
+            return;
+        }
+
+        $parte = $this->resolverParteScrapRetrabajo($falla, $etiqueta);
+
+        if (!$parte) {
+            Log::warning("FallaService::generarPedidoTiendaPorScrapRetrabajo - parte no encontrada para falla {$falla->id}");
+            return;
+        }
+
+        $piezas = Piezas::where('parte_id', $parte->id)->get();
+
+        if ($piezas->isEmpty()) {
+            Log::warning("FallaService::generarPedidoTiendaPorScrapRetrabajo - sin piezas para parte {$parte->id}");
+            return;
+        }
+
+        $linea = $falla->linea ? intval($falla->linea) : intval($etiqueta->linea_real ?? $etiqueta->linea ?? 0);
+        $linea = $linea ?: null;
+        $cantidad = max(1, intval($falla->cantidad ?? 1));
+        $tipoLinea = $falla->tipo_linea ?: '';
+        $scrapService = new ScrapService();
+
+        foreach ($piezas as $pieza) {
+            if (empty($pieza->material_pieza_id)) {
+                continue;
+            }
+
+            for ($i = 0; $i < $cantidad; $i++) {
+                $scrapService->registraScrapPieza(
+                    $userId,
+                    intval($pieza->material_pieza_id),
+                    'Scrap retrabajo',
+                    $linea,
+                    $tipoLinea,
+                    '',
+                    intval($pieza->id),
+                    intval($falla->id)
+                );
+            }
+        }
+
+        $piezasPedido = $piezas->map(function ($pieza) {
+            return ['id' => $pieza->id];
+        })->toArray();
+
+        $tiendaService = new TiendaService();
+        $tiendaService->crearPedido($userId, intval($falla->falla_id), $linea);
+        $tiendaService->agregaPiezas($piezasPedido, $cantidad);
+        StockPiezasLib::controlaPuntoPedidoPiezasSolicitadasTienda($piezasPedido);
+
+        EpEtiqueta::where('id', $etiqueta->id)->update(['estado' => EstadosQr::SCRAP]);
+    }
+
+    private function resolverParteScrapRetrabajo(FallasInformadas $falla, EpEtiqueta $etiqueta): ?Partes {
+        $modeloId = optional($etiqueta->modelod)->id;
+
+        $queryPorCodigo = Partes::where('codigo', $etiqueta->codigo);
+
+        if ($modeloId) {
+            $queryPorCodigo->where('modelo_id', $modeloId);
+        }
+
+        $parte = $queryPorCodigo->first();
+
+        if (!$parte && $etiqueta->codigo && strlen($etiqueta->codigo) > 3) {
+            $codigoBase = substr($etiqueta->codigo, 0, strlen($etiqueta->codigo) - 3);
+            $queryCodigoBase = Partes::where('codigo', $codigoBase);
+
+            if ($modeloId) {
+                $queryCodigoBase->where('modelo_id', $modeloId);
+            }
+
+            $parte = $queryCodigoBase->first();
+        }
+
+        if (!$parte && $modeloId) {
+            $parte = Partes::where('modelo_id', $modeloId)
+                ->where('tipo_id', $falla->tipo_id)
+                ->where('lado_id', $falla->lado_id)
+                ->first();
+        }
+
+        return $parte;
     }
 
     static function getFallasPendientesScrap() {

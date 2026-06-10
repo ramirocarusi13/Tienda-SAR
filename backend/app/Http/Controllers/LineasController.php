@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Http\Estados;
 use App\Http\StockPiezasLib;
 use App\Models\EstadoKanban;
+use App\Models\KanbansReemplazo;
 use App\Models\Lineas;
 use App\Models\Modelos;
 use App\Models\ModeloSublineTiempo;
 use App\Models\PlanCostura;
+use App\Models\Piezas;
+use App\Models\TiendaPedidoItems;
 use DateTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -140,13 +143,7 @@ class LineasController extends Controller {
             })
             ->get();
 
-        $modelos->each(function ($modelo) {
-            $modelo->partes->each(function ($parte) {
-                $parte->piezas->each(function ($pieza) {
-                    StockPiezasLib::hidratarEstadoTiendaPieza($pieza);
-                });
-            });
-        });
+        $this->hidratarEstadoTiendaModelos($modelos);
 
         return $this->setResponse($modelos ? $modelos->toArray() : []);
     }
@@ -166,15 +163,71 @@ class LineasController extends Controller {
             ->where('activo', 1)
             ->get();
 
-        $modelos->each(function ($modelo) {
-            $modelo->partes->each(function ($parte) {
-                $parte->piezas->each(function ($pieza) {
-                    StockPiezasLib::hidratarEstadoTiendaPieza($pieza);
+        $this->hidratarEstadoTiendaModelos($modelos);
+
+        return $this->setResponse($modelos ? $modelos->toArray() : []);
+    }
+
+    private function hidratarEstadoTiendaModelos($modelos): void {
+        $piezas = collect();
+
+        $modelos->each(function ($modelo) use ($piezas) {
+            $modelo->partes->each(function ($parte) use ($piezas) {
+                $parte->piezas->each(function ($pieza) use ($piezas) {
+                    $piezas->push($pieza);
                 });
             });
         });
 
-        return $this->setResponse($modelos ? $modelos->toArray() : []);
+        $piezaIds = $piezas->pluck('id')->filter()->unique()->values();
+
+        if ($piezaIds->isEmpty()) {
+            return;
+        }
+
+        $pendientes = TiendaPedidoItems::join('tienda_pedidos', 'tienda_pedidos.id', '=', 'tienda_pedido_items.pedido_id')
+            ->whereIn('tienda_pedido_items.pieza_id', $piezaIds)
+            ->where('tienda_pedidos.pendiente', true)
+            ->groupBy('tienda_pedido_items.pieza_id')
+            ->selectRaw('tienda_pedido_items.pieza_id, SUM(tienda_pedido_items.cantidad) as cantidad')
+            ->pluck('cantidad', 'pieza_id');
+
+        $enCorte = KanbansReemplazo::whereIn('pieza_id', $piezaIds)
+            ->whereNull('fecha_ingreso')
+            ->pluck('pieza_id')
+            ->flip();
+
+        $piezas->each(function (Piezas $pieza) use ($pendientes, $enCorte) {
+            $stockActual = intval($pieza->stock_tienda_sum_cantidad ?? 0);
+            $pendiente = intval($pendientes[$pieza->id] ?? 0);
+            $stockProyectado = $stockActual - $pendiente;
+            $minimo = intval($pieza->minimo ?? 0);
+            $maximo = intval($pieza->maximo ?? 0);
+            $ptoOptimo = intval($pieza->pto_optimo ?? 0);
+            $reponer = max(0, $maximo - $stockProyectado);
+            $capas = $ptoOptimo > 0 ? intval(ceil($reponer / $ptoOptimo)) : 0;
+            $piezaEnCorte = $enCorte->has($pieza->id);
+            $debeReponer = !$piezaEnCorte && $minimo > 0 && $stockProyectado <= $minimo && $reponer > 0;
+
+            if ($piezaEnCorte) {
+                $estado = 'EN_CORTE';
+            } else if ($debeReponer) {
+                $estado = 'PUNTO_PEDIDO';
+            } else if ($maximo > 0 && $stockProyectado >= $maximo) {
+                $estado = 'OK';
+            } else {
+                $estado = 'NORMAL';
+            }
+
+            $pieza->setAttribute('stock_tienda', $stockActual);
+            $pieza->setAttribute('pedido_pendiente', $pendiente);
+            $pieza->setAttribute('stock_proyectado', $stockProyectado);
+            $pieza->setAttribute('stock_reponer', $reponer);
+            $pieza->setAttribute('capas_reposicion', min($capas, 20));
+            $pieza->setAttribute('debe_reponer', $debeReponer);
+            $pieza->setAttribute('en_corte', $piezaEnCorte);
+            $pieza->setAttribute('estado_tienda', $estado);
+        });
     }
 
 

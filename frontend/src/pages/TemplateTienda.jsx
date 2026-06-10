@@ -41,7 +41,15 @@ const rutasDisponibles = [
     },
     {
         ruta: routesNames.TIENDA.EGRESO,
-        nombre: 'Egreso',
+        nombre: 'Pedidos pendientes',
+        icono: <CiInboxOut />,
+        rolesAdmitidos: [
+            ROLES.DESARROLLO, ROLES.ADMINISTRADOR
+        ],
+    },
+    {
+        ruta: routesNames.TIENDA.PEDIDOS_ENTRANTES,
+        nombre: 'Pantalla pedidos',
         icono: <CiInboxOut />,
         rolesAdmitidos: [
             ROLES.DESARROLLO, ROLES.ADMINISTRADOR

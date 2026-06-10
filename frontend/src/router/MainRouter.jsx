@@ -6,6 +6,7 @@ import TiendaStockPage from '@pages/Stock/TiendaStockPage';
 import EgresoPorKanbanPage from '@pages/Tienda/EgresoPorKanbanPage';
 import ImpresionEtiquetasPage from '@pages/Tienda/ImpresionEtiquetasPage';
 import PedidoReposicionPage from '@pages/Tienda/PedidoReposicionPage';
+import PedidosEntrantesPage from '@pages/Tienda/PedidosEntrantesPage';
 import TemplateTienda from '@pages/TemplateTienda';
 import { routesNames } from '@utils/Constants';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
@@ -41,6 +42,7 @@ export default function MainRouter() {
             </Route>
 
             <Route path={routesNames.TIENDA.PEDIDO_REPOSICION} element={<PedidoReposicionPage />} />
+            <Route path={routesNames.TIENDA.PEDIDOS_ENTRANTES} element={<PedidosEntrantesPage />} />
 
             <Route element={<ProtectedRoute />}>
                 <Route element={<TemplateTienda />}>

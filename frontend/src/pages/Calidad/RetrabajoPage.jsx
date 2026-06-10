@@ -266,7 +266,7 @@ export default function RetrabajoPage() {
 
                         <div className='w-full h-full relative'>
                             {(r?.estado != estadosRetrabajo.PENDIENTE) &&
-                                <div className={`absolute z-20 mt-10 text-center w-full ${r?.estado == estadosRetrabajo.RETRABAJADO && 'bg-green-500'} ${r?.estado == estadosRetrabajo.RECHAZADO && 'bg-red-500'}`}>
+                                <div className={`absolute z-20 mt-10 text-center w-full ${r?.estado == estadosRetrabajo.RETRABAJADO && 'bg-green-500'} ${(r?.estado == estadosRetrabajo.RECHAZADO || r?.estado == estadosRetrabajo.SCRAP) && 'bg-red-500'}`}>
                                     <span className='px-2 py-4 block text-3xl font-semibold text-white'>{r?.estado}</span>
                                 </div>
                             }
@@ -311,6 +311,18 @@ export default function RetrabajoPage() {
                                 >
                                     <button disabled={r?.estado != estadosRetrabajo.PENDIENTE} className='disabled:opacity-70 py-2 disabled:cursor-not-allowed px-3 text-lg bg-red-400 w-full'>RECHAZAR</button>
                                 </Popconfirm>
+
+                                {userVigente?.rol >= jerarquias.TEAM_LEADER &&
+                                    <Popconfirm
+                                        disabled={r?.estado != estadosRetrabajo.PENDIENTE}
+                                        onConfirm={() => retrabajar(r?.id, estadosRetrabajo.SCRAP)}
+                                        okText='Scrap'
+                                        okButtonProps={{ className: 'bg-red-500 ' }}
+                                        title='Â¿EstÃ¡ seguro que desea marcar este retrabajo como scrap?'
+                                    >
+                                        <button disabled={r?.estado != estadosRetrabajo.PENDIENTE} className='disabled:opacity-70 py-2 disabled:cursor-not-allowed px-3 text-lg bg-red-600 text-white w-full'>SCRAP</button>
+                                    </Popconfirm>
+                                }
 
                                 <Popconfirm
                                     disabled={r?.estado != estadosRetrabajo.PENDIENTE}

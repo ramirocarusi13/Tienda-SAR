@@ -9,24 +9,57 @@ import ModalAutorizaUsuario from "../../components/ModalAutorizaUsuario";
 import { finalizarPedidoTienda, getPedidosPendientes } from '../../services/TiendaService';
 import { diferenciaTiempo, formatDateTime } from '../../utils/Utils';
 
+const REFRESH_INTERVAL = 5000;
+
 const resuelveNombreLinea = (item) => {
 
     return item?.linea?.nombre || item?.linea?.codigo || `M${(item?.linea_id || "")}`
 
 }
 
-const PedidoCard = ({ pedido, setPedidoSeleccionado }) => {
+const getModeloPedido = (pedido) => pedido?.items?.[0]?.pieza?.parte?.modelo?.[0]?.nombre || 'SIN MODELO'
 
-    return <div className='border border-gray-400 py-2 flex flex-col rounded-md items-center relative pb-14'>
-        <span className='text-xs'>#{pedido.id}</span>
-        <span className='text-2xl font-semibold'>{resuelveNombreLinea(pedido)} - {pedido?.items[0]?.pieza?.parte?.modelo[0]?.nombre}</span>
+const getTotalPiezas = (pedido) => pedido?.items?.reduce((p, c) => p + parseInt(c.cantidad || 0), 0) || 0
+
+const esPedidoNuevo = (pedido) => {
+    if (!pedido?.created_at) {
+        return false
+    }
+
+    return (new Date().getTime() - new Date(pedido.created_at).getTime()) < 90000
+}
+
+const resuelveOrigenPedido = (pedido) => {
+    if (pedido?.kanban_id) {
+        return 'KANBAN'
+    }
+
+    if (pedido?.linea_id) {
+        return 'LINEA'
+    }
+
+    return 'MANUAL'
+}
+
+const PedidoCard = ({ pedido, setPedidoSeleccionado }) => {
+    const nuevo = esPedidoNuevo(pedido)
+    const origen = resuelveOrigenPedido(pedido)
+
+    return <div className={`border-2 ${nuevo ? 'border-red-500 bg-red-50' : 'border-gray-400 bg-white'} py-2 flex flex-col rounded-md items-center relative pb-16 min-h-[220px]`}>
+        <div className="w-full flex items-center justify-between px-2">
+            <span className='text-xs font-semibold'>#{pedido.id}</span>
+            {nuevo && <Tag color='red-inverse'>NUEVO</Tag>}
+        </div>
+
+        <span className='text-2xl font-semibold text-center px-2'>{resuelveNombreLinea(pedido)} - {getModeloPedido(pedido)}</span>
         <div className="flex items-center w-full justify-center gap-1 border-b pb-1 mt-1">
-            <Tag color='orange'>{pedido?.user?.email?.toUpperCase()}</Tag>
+            <Tag color={origen == 'KANBAN' ? 'purple' : 'volcano'}>{origen}</Tag>
+            {pedido?.user?.email && <Tag color='orange'>{pedido.user.email.toUpperCase()}</Tag>}
             <Tag color='blue'>Hace {diferenciaTiempo(pedido?.created_at)}</Tag>
             {pedido?.falla?.nombre && <Tag color='red'>{pedido?.falla?.nombre}</Tag>}
         </div>
 
-        <span className='border-b w-full text-center text-sm'>{pedido?.items?.reduce((p, c) => p + parseInt(c.cantidad), 0)} piezas</span>
+        <span className='border-b w-full text-center text-sm font-semibold'>{getTotalPiezas(pedido)} piezas</span>
         <div className="w-full px-2 py-1 flex flex-wrap justify-center gap-1">
             {pedido?.items?.slice(0, 4)?.map((item, idx) => (
                 <Tag key={`pi_${pedido.id}_${idx}`} color="default">{item?.cantidad} x {item?.pieza?.codigo}</Tag>
@@ -44,6 +77,7 @@ export default function EgresoPorKanbanPage() {
     const [userLinea, setUserLinea] = useState(null)
     const [isVisibleModalUser, setIsVisibleModalUser] = useState(false)
     const { onKeyDown, finalText } = useCaptureScan()
+    const pedidosConocidosRef = useRef([])
 
     const refDiv = useRef()
 
@@ -140,15 +174,41 @@ export default function EgresoPorKanbanPage() {
         }
     }
 
-    const query = useQuery({ queryKey: [`pedidos_tienda`], queryFn: fetchData, staleTime: 1000, refetchInterval: 120000 })
+    const query = useQuery({ queryKey: [`pedidos_tienda`], queryFn: fetchData, staleTime: 1000, refetchInterval: REFRESH_INTERVAL })
+
+    useEffect(() => {
+        const pedidos = query?.data?.items || []
+        const ids = pedidos.map(p => p.id)
+
+        if (pedidosConocidosRef.current.length > 0) {
+            const nuevos = pedidos.filter(p => !pedidosConocidosRef.current.includes(p.id))
+
+            if (nuevos.length > 0) {
+                setStatus({
+                    error: false,
+                    message: `Nuevo pedido #${nuevos[0].id}`,
+                    rand: Math.random()
+                })
+            }
+        }
+
+        pedidosConocidosRef.current = ids
+    }, [query?.data?.items])
 
     if (!pedidoSeleccionado) {
         return (
-            <div className="w-full ">
-                <div className="flex items-center flex-col gap-1 mb-2 border-b pb-1 text-gray-600">
-                    <span className='text-2xl block text-center font-semibold'>PEDIDOS PENDIENTES</span>
-                    <button onClick={() => query?.refetch()} className="px-4 bg-green-600 text-xs text-white">Actualizar listado de pedidos pendientes</button>
-                    {query?.data?.fecha && <span className='text-xs block text-center '>Actualizado el {formatDateTime(query?.data?.fecha)}</span>}
+            <div className="w-full relative min-h-[82vh]">
+                <div className="flex items-center justify-between gap-2 mb-2 border-b pb-2 text-gray-600">
+                    <div className="flex flex-col">
+                        <span className='text-3xl block font-semibold'>PEDIDOS PENDIENTES</span>
+                        <span className='text-xs'>Se muestran pedidos manuales y pedidos generados por scrap.</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {query?.data?.items && <Tag color='red-inverse' className="!text-lg">{query.data.items.length} pendientes</Tag>}
+                        {query?.isFetching && <Tag color='blue'>Actualizando</Tag>}
+                        <button onClick={() => query?.refetch()} className="px-4 bg-green-600 text-xs text-white">Actualizar</button>
+                    </div>
                 </div>
 
                 {(query?.isLoading || query?.isFetching) &&
@@ -169,6 +229,17 @@ export default function EgresoPorKanbanPage() {
                             return <PedidoCard key={`p_${idx}`} pedido={pedido} setPedidoSeleccionado={setPedidoSeleccionado} />
                         })}
                     </div>
+                }
+
+                {query?.data?.fecha && <span className='text-xs block text-center mt-3 text-gray-500'>Actualizado el {formatDateTime(query?.data?.fecha)}. Refresco automatico cada {REFRESH_INTERVAL / 1000} segundos.</span>}
+
+                {(status?.message) &&
+                    <AutoDismissMessage
+                        message={status?.message}
+                        type={status?.error ? 'error' : 'success'}
+                        duration={5000}
+                        random={status?.rand}
+                    />
                 }
             </div>
         )
