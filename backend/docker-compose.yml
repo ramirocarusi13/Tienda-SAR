@@ -1,0 +1,25 @@
+services:
+  api1:
+    image: api:latest
+    # build: .
+    ports:
+      - "4547:80"
+    restart: always
+  api2:
+    image: api:latest
+    # build: .
+    ports:
+      - "4548:80"
+    restart: always
+  # api3:
+  #   image: api:latest
+  #   # build: .
+  #   ports:
+  #     - "4549:80"
+  #   restart: always
+    
+  nginx:
+    build: ./nginx
+    ports:
+      - "4545:80"
+    restart: always
