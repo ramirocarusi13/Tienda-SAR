@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Log;
 use App\Http\PdfKanban;
 use App\Models\FilePrint;
 use App\Models\PcPendienteImpresion;
+use App\Models\TiendaPedidoItems;
 
 class StockPiezasLib {
 
@@ -17,6 +18,64 @@ class StockPiezasLib {
         return KanbansReemplazo::where('pieza_id', $piezaId)
             ->whereNull('fecha_ingreso')
             ->exists();
+    }
+
+    static function getStockActualTienda(int $piezaId): int {
+        return intval(StockPiezas::where('pieza_id', $piezaId)
+            ->where('deposito_id', Depositos::TIENDA)
+            ->sum('cantidad'));
+    }
+
+    static function getCantidadPendienteTienda(int $piezaId): int {
+        return intval(TiendaPedidoItems::join('tienda_pedidos', 'tienda_pedidos.id', '=', 'tienda_pedido_items.pedido_id')
+            ->where('tienda_pedido_items.pieza_id', $piezaId)
+            ->where('tienda_pedidos.pendiente', true)
+            ->sum('tienda_pedido_items.cantidad'));
+    }
+
+    static function getEstadoTiendaPieza(Piezas $pieza, int $cantidadExtra = 0): array {
+        $stockActual = isset($pieza->stock_tienda_sum_cantidad)
+            ? intval($pieza->stock_tienda_sum_cantidad ?? 0)
+            : StockPiezasLib::getStockActualTienda($pieza->id);
+
+        $pendiente = StockPiezasLib::getCantidadPendienteTienda($pieza->id) + max(0, intval($cantidadExtra));
+        $stockProyectado = $stockActual - $pendiente;
+        $minimo = intval($pieza->minimo ?? 0);
+        $maximo = intval($pieza->maximo ?? 0);
+        $ptoOptimo = intval($pieza->pto_optimo ?? 0);
+        $reponer = max(0, $maximo - $stockProyectado);
+        $capas = $ptoOptimo > 0 ? intval(ceil($reponer / $ptoOptimo)) : 0;
+        $enCorte = StockPiezasLib::existeKanbanReemplazoPendienteIngreso($pieza->id);
+        $debeReponer = !$enCorte && $minimo > 0 && $stockProyectado <= $minimo && $reponer > 0;
+
+        if ($enCorte) {
+            $estado = 'EN_CORTE';
+        } else if ($debeReponer) {
+            $estado = 'PUNTO_PEDIDO';
+        } else if ($maximo > 0 && $stockProyectado >= $maximo) {
+            $estado = 'OK';
+        } else {
+            $estado = 'NORMAL';
+        }
+
+        return [
+            'stock_tienda'       => $stockActual,
+            'pedido_pendiente'   => $pendiente,
+            'stock_proyectado'   => $stockProyectado,
+            'stock_reponer'      => $reponer,
+            'capas_reposicion'   => min($capas, 20),
+            'debe_reponer'       => $debeReponer,
+            'en_corte'           => $enCorte,
+            'estado_tienda'      => $estado,
+        ];
+    }
+
+    static function hidratarEstadoTiendaPieza(Piezas $pieza, int $cantidadExtra = 0): Piezas {
+        foreach (StockPiezasLib::getEstadoTiendaPieza($pieza, $cantidadExtra) as $key => $value) {
+            $pieza->setAttribute($key, $value);
+        }
+
+        return $pieza;
     }
 
     static function crearStockEnCorte($kanbanId) {
@@ -138,40 +197,81 @@ class StockPiezasLib {
         //Esta función se encarga de revisar el minimo en tienda para verificar si necesita reposición
         //En caso de necesitarlo, envia a PC la orden para imprimir el kanban de reemplazo
 
-        $kanban = StockPiezasLib::verificarPiezasReemplazoTienda($piezaId);
+        $kanban = StockPiezasLib::verificarPiezasCortePorPuntoOptimoTienda($piezaId, StockPiezasLib::getStockActualTienda($piezaId));
 
         if (!$kanban) {
             return;
         }
 
-        PcPendienteImpresion::create([
-            'kanban_id' => $kanban->id,
-            'motivo'    => MotivosReimpresion::ABASTECIMIENTO_TIENDA_MINIMO,
-            'tipo'      => 'REEMPLAZO',
-            'pendiente' => true
-        ]);
+        StockPiezasLib::registrarPendienteImpresionTienda($kanban->id, MotivosReimpresion::ABASTECIMIENTO_TIENDA_MINIMO);
     }
 
     static function controlaPuntoOptimoPiezasEgresadasTienda(array $piezaIds) {
         $piezaIds = array_values(array_unique(array_filter(array_map('intval', $piezaIds))));
 
         foreach ($piezaIds as $piezaId) {
-            $kanban = StockPiezasLib::verificarPiezasCortePorPuntoOptimoTienda($piezaId);
+            $kanban = StockPiezasLib::verificarPiezasCortePorPuntoOptimoTienda($piezaId, StockPiezasLib::getStockActualTienda($piezaId));
 
             if (!$kanban) {
                 continue;
             }
 
-            PcPendienteImpresion::create([
-                'kanban_id' => $kanban->id,
-                'motivo'    => MotivosReimpresion::ABASTECIMIENTO_TIENDA,
-                'tipo'      => 'REEMPLAZO',
-                'pendiente' => true
-            ]);
+            StockPiezasLib::registrarPendienteImpresionTienda($kanban->id, MotivosReimpresion::ABASTECIMIENTO_TIENDA);
         }
     }
 
-    static function verificarPiezasCortePorPuntoOptimoTienda(int $piezaId) {
+    static function controlaPuntoPedidoPiezasSolicitadasTienda(array $piezas) {
+        $piezaIds = [];
+
+        foreach ($piezas as $pieza) {
+            $id = is_array($pieza) ? ($pieza['id'] ?? $pieza['pieza_id'] ?? null) : $pieza;
+
+            if ($id) {
+                $piezaIds[] = intval($id);
+            }
+        }
+
+        $piezaIds = array_values(array_unique(array_filter($piezaIds)));
+        $reposiciones = [];
+
+        foreach ($piezaIds as $piezaId) {
+            $pieza = Piezas::with(['modelo'])
+                ->withSum('stockTienda', 'cantidad')
+                ->where('id', $piezaId)
+                ->first();
+
+            if (!$pieza) {
+                continue;
+            }
+
+            $stockProyectado = StockPiezasLib::getEstadoTiendaPieza($pieza)['stock_proyectado'];
+            $kanban = StockPiezasLib::verificarPiezasCortePorPuntoOptimoTienda($piezaId, $stockProyectado);
+
+            if (!$kanban) {
+                continue;
+            }
+
+            StockPiezasLib::registrarPendienteImpresionTienda($kanban->id, MotivosReimpresion::ABASTECIMIENTO_TIENDA);
+            $reposiciones[] = $kanban;
+        }
+
+        return $reposiciones;
+    }
+
+    private static function registrarPendienteImpresionTienda(int $kanbanId, string $motivo) {
+        PcPendienteImpresion::firstOrCreate(
+            [
+                'kanban_id' => $kanbanId,
+                'tipo'      => 'REEMPLAZO',
+            ],
+            [
+                'motivo'    => $motivo,
+                'pendiente' => true
+            ]
+        );
+    }
+
+    static function verificarPiezasCortePorPuntoOptimoTienda(int $piezaId, int|null $stockReferencia = null) {
         $pieza = Piezas::with(['modelo'])
             ->withSum('stockTienda', 'cantidad')
             ->where('id', $piezaId)
@@ -184,7 +284,7 @@ class StockPiezasLib {
         $ptoOptimo = intval($pieza->pto_optimo ?? 0);
         $minimo = intval($pieza->minimo ?? 0);
         $maximo = intval($pieza->maximo ?? 0);
-        $stockActual = intval($pieza->stock_tienda_sum_cantidad ?? 0);
+        $stockActual = $stockReferencia !== null ? intval($stockReferencia) : intval($pieza->stock_tienda_sum_cantidad ?? 0);
         $reponer = $maximo - $stockActual;
 
         if ($ptoOptimo <= 0 || !$pieza->kanban_reposicion || $stockActual > $minimo || $reponer <= 0) {
@@ -232,10 +332,12 @@ class StockPiezasLib {
         }
 
         foreach ($piezas as $pieza) {
-            if (intval($pieza->stock_tienda_sum_cantidad || 0) <= $pieza->minimo) {
-                $reponer = intval($pieza->maximo) - intval($pieza->stock_tienda_sum_cantidad);
+            $estadoTienda = StockPiezasLib::getEstadoTiendaPieza($pieza);
 
-                if ($reponer >= $pieza->pto_optimo && intval($pieza->pto_optimo || 0) > 0 && $pieza->kanban_reposicion) {
+            if ($estadoTienda['stock_proyectado'] <= intval($pieza->minimo)) {
+                $reponer = intval($pieza->maximo) - intval($estadoTienda['stock_proyectado']);
+
+                if ($reponer >= intval($pieza->pto_optimo) && intval($pieza->pto_optimo ?? 0) > 0 && $pieza->kanban_reposicion) {
                     if (StockPiezasLib::existeKanbanReemplazoPendienteIngreso($pieza->id)) {
                         continue;
                     }
@@ -252,7 +354,7 @@ class StockPiezasLib {
                     $pieza->pto_optimo = intval($pieza->pto_optimo);
                     $pieza->minimo = intval($pieza->minimo);
                     $pieza->maximo = intval($pieza->maximo);
-                    $pieza->stock_tienda_sum_cantidad = intval($pieza->stock_tienda_sum_cantidad);
+                    $pieza->stock_tienda_sum_cantidad = intval($estadoTienda['stock_proyectado']);
                     $pieza->file = $pieza->modelo->nombre . '/' . $pieza->kanban_reposicion;
 
                     $pdfKanban = new PdfKanban($pieza->id, $pieza->modelo->nombre, $pieza->kanban_reposicion, $pieza->capas);

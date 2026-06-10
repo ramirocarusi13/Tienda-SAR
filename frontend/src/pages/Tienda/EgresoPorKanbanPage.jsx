@@ -23,9 +23,16 @@ const PedidoCard = ({ pedido, setPedidoSeleccionado }) => {
         <div className="flex items-center w-full justify-center gap-1 border-b pb-1 mt-1">
             <Tag color='orange'>{pedido?.user?.email?.toUpperCase()}</Tag>
             <Tag color='blue'>Hace {diferenciaTiempo(pedido?.created_at)}</Tag>
+            {pedido?.falla?.nombre && <Tag color='red'>{pedido?.falla?.nombre}</Tag>}
         </div>
 
         <span className='border-b w-full text-center text-sm'>{pedido?.items?.reduce((p, c) => p + parseInt(c.cantidad), 0)} piezas</span>
+        <div className="w-full px-2 py-1 flex flex-wrap justify-center gap-1">
+            {pedido?.items?.slice(0, 4)?.map((item, idx) => (
+                <Tag key={`pi_${pedido.id}_${idx}`} color="default">{item?.cantidad} x {item?.pieza?.codigo}</Tag>
+            ))}
+            {pedido?.items?.length > 4 && <Tag color="default">+{pedido.items.length - 4}</Tag>}
+        </div>
         <button onClick={() => setPedidoSeleccionado(pedido)} className='w-[95%] mb-2 hover:opacity-70 text-sm bg-emerald-600 text-white mt-2 absolute bottom-0'>PREPARAR</button>
     </div>
 }
@@ -190,7 +197,7 @@ export default function EgresoPorKanbanPage() {
                         </button>
                     </Popconfirm>
 
-                    <span className='text-2xl block text-center mb-2  pb-1 font-semibold'>PEDIDO #{pedidoSeleccionado?.id} - LINEA M{pedidoSeleccionado?.linea_id} - {pedidoSeleccionado?.items[0]?.pieza?.parte?.modelo[0]?.nombre}</span>
+                    <span className='text-2xl block text-center mb-2  pb-1 font-semibold'>PEDIDO #{pedidoSeleccionado?.id} - LINEA M{pedidoSeleccionado?.linea_id} - {pedidoSeleccionado?.items[0]?.pieza?.parte?.modelo[0]?.nombre}{pedidoSeleccionado?.falla?.nombre ? ` - ${pedidoSeleccionado.falla.nombre}` : ''}</span>
 
                     <Popconfirm
                         onConfirm={() => setIsVisibleModalUser(true)}

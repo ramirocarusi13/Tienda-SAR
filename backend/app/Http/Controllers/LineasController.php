@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Estados;
+use App\Http\StockPiezasLib;
 use App\Models\EstadoKanban;
 use App\Models\Lineas;
 use App\Models\Modelos;
@@ -124,21 +125,54 @@ class LineasController extends Controller {
 
     public function getModelosLinea($linea) {
 
-        $modelos = Modelos::with(['fallas.tipo', 'fallas.lado', 'partes.lado', 'partes.tipo', 'partes.piezas.material_pieza'])
+        $modelos = Modelos::with([
+            'fallas.tipo',
+            'fallas.lado',
+            'partes.lado',
+            'partes.tipo',
+            'partes.piezas' => function ($q) {
+                $q->with(['material_pieza'])->withSum('stockTienda', 'cantidad');
+            },
+        ])
             ->where('activo', 1)
             ->whereHas('lineas', function ($q) use ($linea) {
                 $q->where('linea_id', intval($linea));
             })
             ->get();
 
+        $modelos->each(function ($modelo) {
+            $modelo->partes->each(function ($parte) {
+                $parte->piezas->each(function ($pieza) {
+                    StockPiezasLib::hidratarEstadoTiendaPieza($pieza);
+                });
+            });
+        });
+
         return $this->setResponse($modelos ? $modelos->toArray() : []);
     }
 
     public function getModelosLineaFlex() {
 
-        $modelos = Modelos::with(['lineas', 'fallas.tipo', 'fallas.lado', 'partes.lado', 'partes.tipo', 'partes.piezas.material_pieza'])
+        $modelos = Modelos::with([
+            'lineas',
+            'fallas.tipo',
+            'fallas.lado',
+            'partes.lado',
+            'partes.tipo',
+            'partes.piezas' => function ($q) {
+                $q->with(['material_pieza'])->withSum('stockTienda', 'cantidad');
+            },
+        ])
             ->where('activo', 1)
             ->get();
+
+        $modelos->each(function ($modelo) {
+            $modelo->partes->each(function ($parte) {
+                $parte->piezas->each(function ($pieza) {
+                    StockPiezasLib::hidratarEstadoTiendaPieza($pieza);
+                });
+            });
+        });
 
         return $this->setResponse($modelos ? $modelos->toArray() : []);
     }

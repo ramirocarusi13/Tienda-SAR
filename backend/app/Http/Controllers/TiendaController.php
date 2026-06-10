@@ -121,7 +121,12 @@ class TiendaController extends Controller {
                 }
             }
 
-            return $this->setResponse([]);
+            $reposiciones = StockPiezasLib::controlaPuntoPedidoPiezasSolicitadasTienda($piezas);
+
+            return $this->setResponse([
+                'pedido_id'     => $tiendaService->pedidoId,
+                'reposiciones'  => count($reposiciones),
+            ]);
         } catch (\Throwable $th) {
             Log::error('TiendaController::setPedido - ' . $th->getMessage());
             return $this->setResponse([], 'Ocurrió un error al grabar el pedido', true);

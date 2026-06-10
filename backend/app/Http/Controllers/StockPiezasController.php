@@ -180,6 +180,10 @@ class StockPiezasController extends Controller {
             ->withSum('stockTienda', 'cantidad')
             ->orderBy('stock_tienda_sum_cantidad')->get();
 
+        $data->each(function ($pieza) {
+            StockPiezasLib::hidratarEstadoTiendaPieza($pieza);
+        });
+
         if ($data) {
             return $this->setResponse($data->toArray());
         } else {

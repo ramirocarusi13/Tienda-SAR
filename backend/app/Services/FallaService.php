@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Http\EstadoFalla;
+use App\Http\StockPiezasLib;
 use App\Models\CodigoFalla;
 use App\Models\EpEtiqueta;
 use App\Models\FallasInformadas;
@@ -167,6 +168,17 @@ class FallaService {
                         return false;
                     }
                 }
+            }
+
+            try {
+                $tiendaService = new TiendaService();
+                $tiendaService->crearPedido($userId, $fallaId, $linea);
+                $tiendaService->agregaPiezas($piezas);
+                StockPiezasLib::controlaPuntoPedidoPiezasSolicitadasTienda($piezas);
+            } catch (\Throwable $th) {
+                Log::error("FallaService::creaFallaDesdePiezas tienda : " . $th->getMessage());
+                DB::rollBack();
+                return false;
             }
         }
         DB::commit();

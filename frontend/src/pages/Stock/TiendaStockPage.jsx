@@ -69,7 +69,7 @@ export default function TiendaStockPage() {
             dataIndex: 'reposicion',
             key: 'reposicion',
             render: (_, record) => {
-                const val = record?.maximo - parseInt(record?.stock_tienda_sum_cantidad || 0)
+                const val = record?.stock_reponer ?? (record?.maximo - parseInt(record?.stock_tienda || record?.stock_tienda_sum_cantidad || 0))
 
                 if (val <= 0) {
                     return 0
@@ -82,13 +82,21 @@ export default function TiendaStockPage() {
             dataIndex: 'stock_tienda_sum_cantidad',
             key: 'stock_tienda_sum_cantidad',
             className: 'min-w-[40px]',
-            render: (text) => {
-                if (!text) {
-                    return 0
-                } else {
-                    return text
-                }
-            }
+            render: (_, record) => record?.stock_tienda ?? record?.stock_tienda_sum_cantidad ?? 0
+        },
+        {
+            title: 'Pend.',
+            dataIndex: 'pedido_pendiente',
+            key: 'pedido_pendiente',
+            className: 'min-w-[40px]',
+            render: (_, record) => record?.pedido_pendiente ?? 0
+        },
+        {
+            title: 'Proj.',
+            dataIndex: 'stock_proyectado',
+            key: 'stock_proyectado',
+            className: 'min-w-[40px]',
+            render: (_, record) => record?.stock_proyectado ?? record?.stock_tienda ?? record?.stock_tienda_sum_cantidad ?? 0
         },
         {
             title: 'Estado',
@@ -103,15 +111,16 @@ export default function TiendaStockPage() {
                 }
 
                 //TODO REVISAR
-                let reposicion = record?.maximo - parseInt(record?.stock_tienda_sum_cantidad || 0)
+                const stock = parseInt((record?.stock_proyectado ?? record?.stock_tienda ?? record?.stock_tienda_sum_cantidad) || 0)
+                let reposicion = record?.stock_reponer ?? (record?.maximo - stock)
 
-                if (parseInt(record?.stock_tienda_sum_cantidad || 0) < record?.minimo) {
+                if (stock <= record?.minimo) {
                     if (reposicion < record?.pto_optimo || parseInt(record?.pto_optimo || 0) == 0) {
                         return <Tag className="!text-xs" color={"#ef4444"}>Crítico</Tag>
                     }
                     return <Tag className="!text-xs" color={"#E89831"}>Listo para corte</Tag>
                     // return <Tag color={"#E89831"} bordered>Listo para corte</Tag>
-                } else if (record?.stock_tienda_sum_cantidad >= record?.maximo) {
+                } else if (stock >= record?.maximo) {
                     return <Tag className="!text-xs" color={"#10b981"}>Correcto</Tag>
                 } else {
                     return <Tag className="!text-xs" color={"#E8DD31"}>Normal</Tag>
@@ -155,7 +164,7 @@ export default function TiendaStockPage() {
             render: (_, record) => {
 
                 // if (record?.kanban_reemplazo?.abierto) {
-                const val = record?.maximo - parseInt(record?.stock_tienda_sum_cantidad || 0)
+                const val = record?.stock_reponer ?? (record?.maximo - parseInt((record?.stock_proyectado ?? record?.stock_tienda ?? record?.stock_tienda_sum_cantidad) || 0))
                 if (val <= 0) {
                     return ""
                 }
@@ -168,7 +177,7 @@ export default function TiendaStockPage() {
                     if (record?.pto_optimo <= 0) {
                         capas = 1
                     }
-                    let reposicion = record?.maximo - parseInt(record?.stock_tienda_sum_cantidad || 0)
+                    let reposicion = record?.stock_reponer ?? (record?.maximo - parseInt((record?.stock_proyectado ?? record?.stock_tienda ?? record?.stock_tienda_sum_cantidad) || 0))
 
                     if (reposicion < record?.pto_optimo || parseInt(record?.pto_optimo || 0) == 0) {
                         capas = 1

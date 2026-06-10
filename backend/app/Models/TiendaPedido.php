@@ -28,4 +28,8 @@ class TiendaPedido extends Model {
     public function linea(): HasOne {
         return $this->hasOne(Lineas::class, 'id', 'linea_id');
     }
+
+    public function falla(): HasOne {
+        return $this->hasOne(CodigoFalla::class, 'id', 'falla_id');
+    }
 }

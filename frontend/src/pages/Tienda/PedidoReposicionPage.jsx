@@ -25,6 +25,8 @@ const lineas = [
     { nombre: 'M11', id: 11 },
 ]
 
+const toInt = (value) => parseInt(value || 0, 10)
+
 export default function PedidoReposicionPage() {
     const { register, formState: { errors }, setFocus } = useForm();
     const { response: fallas } = useFallas(true, true)
@@ -45,16 +47,99 @@ export default function PedidoReposicionPage() {
     const [funda, setFunda] = useState(null)
     const [api, contextHolder] = notification.useNotification();
 
+    const getPiezasFunda = () => {
+        if (!modeloActivo || !funda) {
+            return []
+        }
+
+        return modeloActivo?.partes?.find(p => p.codigo == funda.codigo)?.piezas || []
+    }
+
+    const findPieza = (piezaId) => {
+        if (!modeloActivo) {
+            return null
+        }
+
+        for (const parte of (modeloActivo?.partes || [])) {
+            const pieza = parte?.piezas?.find(p => p.id == piezaId)
+
+            if (pieza) {
+                return pieza
+            }
+        }
+
+        return null
+    }
+
+    const getCantidadSeleccionada = (piezaId) => {
+        return toInt(selectedPiezas?.find(p => p.id == piezaId)?.cantidad)
+    }
+
+    const getEstadoPieza = (pieza) => {
+        if (!pieza) {
+            return {
+                stock: 0,
+                pendiente: 0,
+                seleccionado: 0,
+                proyectado: 0,
+                puntoPedido: 0,
+                maximo: 0,
+                reponer: 0,
+                disparaCorte: false,
+                enCorte: false
+            }
+        }
+
+        const seleccionado = getCantidadSeleccionada(pieza.id)
+        const stock = toInt(pieza?.stock_tienda ?? pieza?.stock_tienda_sum_cantidad)
+        const pendiente = toInt(pieza?.pedido_pendiente)
+        const puntoPedido = toInt(pieza?.minimo)
+        const maximo = toInt(pieza?.maximo)
+        const proyectado = stock - pendiente - seleccionado
+        const reponer = Math.max(0, maximo - proyectado)
+        const enCorte = Boolean(pieza?.en_corte || pieza?.kanban_reemplazo?.abierto)
+        const disparaCorte = !enCorte && puntoPedido > 0 && proyectado <= puntoPedido && reponer > 0
+
+        return {
+            stock,
+            pendiente,
+            seleccionado,
+            proyectado,
+            puntoPedido,
+            maximo,
+            reponer,
+            disparaCorte,
+            enCorte
+        }
+    }
+
+    const getEstadoClass = (estado) => {
+        if (estado.enCorte) {
+            return 'bg-blue-100 border-blue-500'
+        }
+
+        if (estado.disparaCorte) {
+            return 'bg-red-100 border-red-500'
+        }
+
+        if (estado.maximo > 0 && estado.proyectado >= estado.maximo) {
+            return 'bg-green-100 border-green-500'
+        }
+
+        return 'bg-orange-100 border-orange-300'
+    }
+
     const removePieza = (id) => {
         const pPiezas = selectedPiezas.filter(p => p.id != id)
         setSelectedPiezas(pPiezas)
     }
 
     const handleSumaAll = () => {
+        const piezasFunda = getPiezasFunda()
         const response = [...selectedPiezas]
-        const finish = []
+        const finish = selectedPiezas.filter(sp => !piezasFunda.some(p => p.id == sp.id))
 
-        modeloActivo?.partes?.find(p => p.codigo == funda.codigo)?.piezas?.map(p => {
+        piezasFunda?.map(p => {
             const piezaEx = response?.filter(pi => pi.id == p.id)
 
             if (piezaEx.length > 0) {
@@ -68,7 +153,9 @@ export default function PedidoReposicionPage() {
         setSelectedPiezas(finish)
     }
 
-    const handleSumaPieza = (codigo, id) => {
+    const handleSumaPieza = (pieza) => {
+        const codigo = pieza?.codigo
+        const id = pieza?.id
 
         const piezaEx = selectedPiezas?.filter(p => p.id == id)
         const pPiezas = selectedPiezas?.filter(p => p.id != id)
@@ -110,8 +197,9 @@ export default function PedidoReposicionPage() {
         const data = await grabarPedido(payload, true)
 
         if (!data?.error) {
+            const reposiciones = toInt(data?.data?.reposiciones)
             handleCancel()
-            openNotification(false, "Pedido guardado correctamente!")
+            openNotification(false, reposiciones > 0 ? `Pedido guardado. Se envio ${reposiciones} orden(es) a corte.` : "Pedido guardado correctamente!")
         } else {
             openNotification(true, data?.message)
         }
@@ -235,13 +323,16 @@ export default function PedidoReposicionPage() {
                                     </div>
 
                                     <div className="w-auto h-full relative ">
-                                        {modeloActivo.partes?.find(p => p.codigo == funda.codigo)?.piezas?.map((p, idx) => {
+                                        {getPiezasFunda()?.map((p, idx) => {
                                             if (p.p_left && p.p_top && p.p_width && p.p_height) {
+                                                const cantidadSeleccionada = getCantidadSeleccionada(p.id)
+
                                                 return <button
-                                                    onClick={() => handleSumaPieza(p.codigo, p.id)}
+                                                    onClick={() => handleSumaPieza(p)}
                                                     key={idx}
                                                     style={{ left: `${p.p_left}%`, top: `${p.p_top}%`, width: `${p.p_width}%`, height: `${p.p_height}%` }}
-                                                    className={`${selectedPiezas?.filter(o => o.id == p.id)?.length > 0 && '!bg-orange-400'} bg-transparent !outline-none active:!bg-green-500 border-0 border-green-400 absolute opacity-50 `}>
+                                                    className={`${cantidadSeleccionada > 0 && '!bg-orange-400'} bg-transparent !outline-none active:!bg-green-500 border-0 border-green-400 absolute opacity-50 flex items-center justify-center`}>
+                                                    {cantidadSeleccionada > 0 && <span className="bg-black text-white rounded-full px-3 py-1 text-xl font-bold">{cantidadSeleccionada}</span>}
                                                 </button>
                                             }
                                         })}
@@ -280,16 +371,61 @@ export default function PedidoReposicionPage() {
                             }
                         </div>
 
-                        <div className="w-[500px] overflow-x-hidden h-full border-l border-gray-500 px-2 relative">
-                            <div className="w-full overflow-y-scroll overflow-x-hidden h-[80%] ">
+                        <div className="w-[540px] overflow-x-hidden h-full border-l border-gray-500 px-2 relative">
+                            {funda &&
+                                <div className="w-full h-[43%] border-b border-gray-500 pb-2">
+                                    <span className="text-2xl font-semibold block text-center border-gray-500 border-b">PIEZAS DE FUNDA</span>
+                                    <div className="h-[calc(100%-2.5rem)] overflow-y-scroll overflow-x-hidden pt-2 flex flex-col gap-2">
+                                        {getPiezasFunda()?.map((pieza, idx) => {
+                                            const estado = getEstadoPieza(pieza)
+
+                                            return <button
+                                                key={`pf_${idx}`}
+                                                onClick={() => handleSumaPieza(pieza)}
+                                                className={`${getEstadoClass(estado)} border-2 text-black w-full py-2 px-2 flex flex-col items-start rounded-md`}
+                                            >
+                                                <div className="w-full flex items-center justify-between">
+                                                    <span className="text-2xl font-bold">{pieza.codigo}</span>
+                                                    <span className="text-xl font-bold">{estado.seleccionado > 0 ? `+${estado.seleccionado}` : '+'}</span>
+                                                </div>
+                                                <div className="w-full grid grid-cols-4 gap-1 text-xs font-semibold text-left">
+                                                    <span>Stock {estado.stock}</span>
+                                                    <span>Ped. {estado.puntoPedido}</span>
+                                                    <span>Max {estado.maximo}</span>
+                                                    <span>Proj. {estado.proyectado}</span>
+                                                </div>
+                                                {(estado.pendiente > 0 || estado.disparaCorte || estado.enCorte) &&
+                                                    <span className="text-xs font-bold mt-1">
+                                                        {estado.enCorte ? 'EN CORTE' : estado.disparaCorte ? `CORTE +${estado.reponer}` : `Pendiente ${estado.pendiente}`}
+                                                    </span>
+                                                }
+                                            </button>
+                                        })}
+                                    </div>
+                                </div>
+                            }
+
+                            <div className={`w-full overflow-y-scroll overflow-x-hidden ${funda ? 'h-[37%]' : 'h-[80%]'} `}>
                                 <span className="text-2xl font-semibold block text-center border-gray-500 border-b">PIEZAS SOLICITADAS ({selectedPiezas?.reduce((p, c) => p + c?.cantidad, 0)})</span>
                                 {selectedPiezas?.length > 0 && <button onClick={() => setSelectedPiezas([])} className="w-full text-xl bg-red-500 py-3 my-2 text-white">BORRAR TODO</button>}
-                                {selectedPiezas?.map((p, idx) => (
-                                    <div className="w-full border-b border-gray-500 flex items-center justify-between" key={`p${idx}`}>
-                                        <span className="text-3xl font-semibold">{p.cantidad} x {p.codigo}</span>
-                                        <button onClick={() => removePieza(p.id)} className="p-0 !outline-none bg-red-500 px-10">X</button>
+                                {selectedPiezas?.map((p, idx) => {
+                                    const pieza = findPieza(p.id)
+                                    const estado = getEstadoPieza(pieza)
+
+                                    return <div className={`${getEstadoClass(estado)} w-full border-b border-gray-500 flex flex-col px-2 py-1`} key={`p${idx}`}>
+                                        <div className="w-full flex items-center justify-between">
+                                            <span className="text-3xl font-semibold">{p.cantidad} x {p.codigo}</span>
+                                            <button onClick={() => removePieza(p.id)} className="p-0 !outline-none bg-red-500 px-10">X</button>
+                                        </div>
+                                        <div className="grid grid-cols-4 text-xs font-semibold">
+                                            <span>Stock {estado.stock}</span>
+                                            <span>Ped. {estado.puntoPedido}</span>
+                                            <span>Max {estado.maximo}</span>
+                                            <span>Proj. {estado.proyectado}</span>
+                                        </div>
+                                        {estado.disparaCorte && <span className="text-xs font-bold text-red-700">Dispara corte por {estado.reponer} pieza(s)</span>}
                                     </div>
-                                ))}
+                                })}
 
                             </div>
                             <button onClick={() => setIsVisible(true)} disabled={selectedPiezas?.length == 0} className="bg-green-500 disabled:cursor-not-allowed disabled:opacity-50 w-[95%] py-6 mb-14 text-2xl text-white absolute bottom-0">CONFIRMAR</button>

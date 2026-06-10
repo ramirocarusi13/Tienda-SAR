@@ -67,7 +67,7 @@ class TiendaService {
     }
 
     static function getPedidosPendientes() {
-        $pedidos = TiendaPedido::with('linea', 'user', 'items.pieza.parte.modelo', 'items.pieza.material_pieza')->where('pendiente', 1)->get();
+        $pedidos = TiendaPedido::with('linea', 'falla', 'user', 'items.pieza.parte.modelo', 'items.pieza.material_pieza')->where('pendiente', 1)->get();
 
         return $pedidos;
     }
