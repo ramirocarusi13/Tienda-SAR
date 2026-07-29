@@ -12,6 +12,12 @@ FROM base AS prod-deps
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --prod --no-frozen-lockfile
 
 FROM base AS build
+ARG VITE_API_URI=http://192.168.8.16:4555/api/
+ARG VITE_API_PUBLIC_URI=http://192.168.8.16:4555/
+ARG VITE_API_ENVIROMENT=PRODUCCION
+ENV VITE_API_URI=$VITE_API_URI
+ENV VITE_API_PUBLIC_URI=$VITE_API_PUBLIC_URI
+ENV VITE_API_ENVIROMENT=$VITE_API_ENVIROMENT
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile
 RUN pnpm run build --mode production
 

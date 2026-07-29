@@ -1,3 +1,3 @@
-git pull
-docker build . -t front-main:latest && docker stop front-main & docker rm front-main & docker run -d --restart unless-stopped --name front-main -p 8001:80 front-main:latest
+git pull --autostash
+docker build . -t sar-tienda-frontend:latest && docker stop tienda-frontend & docker rm tienda-frontend & docker run -d --restart unless-stopped --name tienda-frontend -p 8007:80 sar-tienda-frontend:latest
 pause

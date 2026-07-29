@@ -7,11 +7,11 @@ REM   - Actualizar SOLO este cambio en produccion sin tirar docker.
 REM   - Mantener intactos los demas servicios/funciones.
 REM
 REM  Que hace:
-REM   1) Backend: copia solo LectraController.php a api-api1-1 y api-api2-1.
+REM   1) Backend: copia solo LectraController.php a tienda-api1 y tienda-api2.
 REM   2) Backend: limpia cache/config/routes en ambos containers.
 REM   3) Frontend: oculta cambios no relacionados con git stash.
 REM   4) Frontend: builda dist en container node efimero.
-REM   5) Frontend: copia dist al container front-main.
+REM   5) Frontend: copia dist al container tienda-frontend.
 REM   6) Frontend: restaura el stash de cambios ocultos.
 REM
 REM  NO hace docker compose down, NO reinicia servicios.
@@ -24,12 +24,12 @@ cd /d "%HERE%"
 set "API_DIR=%cd%"
 set "FRONT_DIR=%HERE%..\frontend"
 
-set "CONT1=api-api1-1"
-set "CONT2=api-api2-1"
+set "CONT1=tienda-api1"
+set "CONT2=tienda-api2"
 set "API_DEST=/var/www/html"
 set "API_FILE=app/Http/Controllers/LectraController.php"
 
-set "FRONT_CONT=front-main"
+set "FRONT_CONT=tienda-frontend"
 set "FRONT_DEST=/var/www/html"
 set "STASH_MSG=deploy-abastecimiento-hotfix-%RANDOM%-%RANDOM%"
 set "STASHED="
@@ -175,7 +175,7 @@ echo  Backend actualizado: %API_FILE%
 echo  Frontend actualizado: build dist en %FRONT_CONT%
 echo.
 echo  Probar:
-echo   - http://192.168.8.16:8001/PC/ABASTECIMIENTO
+echo   - http://192.168.8.16:8007/PC/ABASTECIMIENTO
 echo   - Ctrl+F5 en la TV/cliente para tomar bundle nuevo.
 echo ============================================================
 echo.

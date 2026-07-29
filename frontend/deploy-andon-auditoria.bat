@@ -1,7 +1,7 @@
 @echo off
 REM ============================================================
 REM  Frontend hot deploy - SOLO vista Andon Auditoria Hora a Hora
-REM  Ruta: http://192.168.8.16:8001/andon/auditoria_hora_hora
+REM  Ruta: http://192.168.8.16:8007/andon/auditoria_hora_hora
 REM
 REM  Que hace:
 REM   1. Esconde con git stash los cambios NO relacionados para
@@ -11,7 +11,7 @@ REM        - src/pages/Stock/InventarioMaterialesResultadoPage.jsx
 REM        - src/services/StockService.js
 REM        - deploy.bat
 REM   2. Builda el bundle Vite en un container node efimero.
-REM   3. Copia el dist al container front-main ya corriendo.
+REM   3. Copia el dist al container tienda-frontend ya corriendo.
 REM   4. Restaura los cambios stasheados en tu working tree.
 REM
 REM  Los archivos que SI se deployan (todos son de esta vista):
@@ -22,7 +22,7 @@ REM    - src/utils/Constants.js (constante nueva)
 REM    - src/pages/LinksPage.jsx (entrada de menu nueva)
 REM
 REM  NO hace docker build ni docker compose down/up.
-REM  NO toca api-*, api-nginx-1, ni ningun otro servicio.
+REM  NO toca api-*, api-nginx-1, front-main, ni ningun otro servicio.
 REM ============================================================
 
 setlocal
@@ -30,7 +30,7 @@ setlocal
 set "HERE=%~dp0"
 cd /d "%HERE%"
 
-set "FRONT_CONT=front-main"
+set "FRONT_CONT=tienda-frontend"
 set "FRONT_DEST=/var/www/html"
 set "STASH_MSG=deploy-andon-auditoria temporal"
 set "STASHED="
@@ -91,9 +91,9 @@ echo.
 echo ============================================================
 echo   LISTO. Frontend desplegado sin reiniciar containers.
 echo   Modificado: %FRONT_CONT% (archivos estaticos en %FRONT_DEST%)
-echo   Intactos:   api-*, y todos los demas servicios.
+echo   Intactos:   api-*, front-main, y todos los demas servicios.
 echo.
-echo   Probar: http://192.168.8.16:8001/andon/auditoria_hora_hora
+echo   Probar: http://192.168.8.16:8007/andon/auditoria_hora_hora
 echo   Tip: Ctrl+F5 en el navegador para tomar el nuevo bundle.
 echo ============================================================
 echo.

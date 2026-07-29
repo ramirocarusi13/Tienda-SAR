@@ -20,9 +20,18 @@ export const getPedidosEntrantes = async () => {
     }
 }
 
-export const getEtiquetas = async () => {
+export const getEtiquetas = async (params = {}) => {
     try {
-        const data = await HttpGet("tienda/etiquetas")
+        const queryParams = new URLSearchParams()
+
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                queryParams.append(key, value)
+            }
+        })
+
+        const query = queryParams.toString()
+        const data = await HttpGet(`tienda/etiquetas${query ? `?${query}` : ''}`)
         return data
     } catch (error) {
         return error

@@ -4,6 +4,8 @@ FROM php:8.2-apache
 # Install Additional System Dependencies
 RUN apt-get update && apt-get install -y \
     libzip-dev \
+    git \
+    unzip \
     zip
 
 # Clear cache
@@ -48,7 +50,11 @@ WORKDIR /var/www/html
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 # Install project dependencies
-RUN composer install --ignore-platform-req=ext-gd
+RUN composer install --ignore-platform-req=ext-gd --no-dev --prefer-source --no-interaction --optimize-autoloader
+
+# Create a build-time env file only when the deployment did not provide one.
+RUN if [ ! -f .env ]; then cp .env.example .env; fi \
+    && php artisan key:generate --force
 
 # Set permissions
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache

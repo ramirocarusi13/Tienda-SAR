@@ -1,3 +1,3 @@
-git pull
-docker build . -t api && docker compose down && docker compose up --build -d
+git pull --autostash
+docker build . -t sar-tienda-api:latest && docker compose up --build -d
 pause

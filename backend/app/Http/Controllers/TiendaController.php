@@ -34,36 +34,56 @@ class TiendaController extends Controller {
         return $this->setResponse([]);
     }
 
-    public function getEtiquetas() {
-        //SUKS - Completo
-        //SUNS - Inset
-        //SUJS - Completo
-        //SSBN - Completo ** LISTO
+    public function getEtiquetas(Request $request) {
+        $query = Piezas::with(['modelo', 'parte.lado', 'parte.tipo'])
+            ->whereHas('parte', function ($q) {
+                $q->where('partes.activo', 1);
+            })
+            ->whereHas('modelo', function ($q) {
+                $q->where('modelos.activo', 1);
+            });
 
-        $data = Piezas::with(['modelo', 'parte.lado'])
-            // ->whereHas('modelo', function ($q) {
-            //     $q->where('modelos.activo', true)
-            //         ->where('modelos.nombre', 'SUNS');
-            // })
-            ->where('id', 3775)
-            ->orWhere('id', 1898)
-            ->orWhere('id', 3804)
-            // ->orWhere('id', 1419)
-            // ->orWhere('id', 1398)
-            // ->orWhere('id', 1420)
+        if ($request->filled('modelo')) {
+            $modeloId = intval($request->modelo);
+            $query->whereHas('modelo', function ($q) use ($modeloId) {
+                $q->where('modelos.id', $modeloId);
+            });
+        }
 
-            // ->where('id', 3891)
-            // ->orWhere('id', 3922)
-            // ->orWhere('id', 3858)
-            // ->where('parte_id', 223)
-            // ->orWhere('parte_id', 224)
+        if ($request->filled('pieza')) {
+            $query->where('id', intval($request->pieza));
+        }
+
+        if ($request->filled('parte')) {
+            $query->where('parte_id', intval($request->parte));
+        }
+
+        if ($request->filled('lado')) {
+            $lado = $request->lado;
+            $query->whereHas('parte.lado', function ($q) use ($lado) {
+                $q->where('lado', $lado);
+            });
+        }
+
+        if ($request->filled('buscar')) {
+            $buscar = trim($request->buscar);
+            $query->where(function ($q) use ($buscar) {
+                $q->where('codigo', 'like', '%' . $buscar . '%')
+                    ->orWhere('dado', 'like', '%' . $buscar . '%')
+                    ->orWhereHas('modelo', function ($modeloQuery) use ($buscar) {
+                        $modeloQuery->where('nombre', 'like', '%' . $buscar . '%');
+                    })
+                    ->orWhereHas('parte', function ($parteQuery) use ($buscar) {
+                        $parteQuery->where('partes.codigo', 'like', '%' . $buscar . '%');
+                    });
+            });
+        }
+
+        $data = $query
+            ->orderBy('codigo')
             ->get();
 
-        if ($data) {
-            return $this->setResponse($data->toArray());
-        } else {
-            return $this->setResponse([]);
-        }
+        return $this->setResponse($data->toArray());
     }
 
     public function getPedidoByKanban($kanbanCode) {

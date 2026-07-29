@@ -2,7 +2,7 @@
 REM ============================================================
 REM  Frontend hot deploy - solo cambios de racks (TrasvasoPage)
 REM  Builda el bundle Vite en un container node efimero y copia
-REM  el dist al container front-main ya corriendo.
+REM  el dist al container tienda-frontend ya corriendo.
 REM  NO hace docker build ni docker compose down/up.
 REM
 REM  Oculta los cambios no relacionados con git stash antes del
@@ -18,7 +18,7 @@ setlocal
 set "HERE=%~dp0"
 cd /d "%HERE%"
 
-set "FRONT_CONT=front-main"
+set "FRONT_CONT=tienda-frontend"
 set "FRONT_DEST=/var/www/html"
 set "STASH_MSG=deploy-sin-tirar-docker temporal"
 
@@ -72,7 +72,7 @@ echo.
 echo ============================================================
 echo   LISTO. Frontend desplegado sin reiniciar containers.
 echo   Modificado: %FRONT_CONT% (archivos estaticos en %FRONT_DEST%)
-echo   Intactos:   api-*, y todos los demas servicios.
+echo   Intactos:   api-*, front-main, y todos los demas servicios.
 echo.
 echo   Tip: forza recarga en los navegadores/pc-scanner (Ctrl+F5)
 echo        para que tomen el nuevo bundle.

@@ -1,25 +1,43 @@
 services:
   api1:
-    image: api:latest
-    # build: .
+    image: sar-tienda-api:latest
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: tienda-api1
+    env_file:
+      - path: ./.env
+        required: false
     ports:
-      - "4547:80"
-    restart: always
+      - "${TIENDA_API1_PORT:-4557}:80"
+    restart: unless-stopped
   api2:
-    image: api:latest
-    # build: .
+    image: sar-tienda-api:latest
+    container_name: tienda-api2
+    env_file:
+      - path: ./.env
+        required: false
+    depends_on:
+      - api1
     ports:
-      - "4548:80"
-    restart: always
+      - "${TIENDA_API2_PORT:-4558}:80"
+    restart: unless-stopped
   # api3:
-  #   image: api:latest
-  #   # build: .
+  #   image: sar-tienda-api:latest
+  #   build:
+  #     context: .
+  #     dockerfile: dockerfile
   #   ports:
-  #     - "4549:80"
-  #   restart: always
+  #     - "${TIENDA_API3_PORT:-4559}:80"
+  #   restart: unless-stopped
     
   nginx:
+    image: sar-tienda-api-nginx:latest
     build: ./nginx
+    container_name: tienda-api-nginx
+    depends_on:
+      - api1
+      - api2
     ports:
-      - "4545:80"
-    restart: always
+      - "${TIENDA_API_PORT:-4555}:80"
+    restart: unless-stopped
